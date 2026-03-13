@@ -12,9 +12,16 @@ jobs:
       - name: Ping backend health endpoint
         run: |
           # Railway free tier may return transient 502s during cold start.
-          # Retry a few times so a single wake-up doesn't mark the workflow as failed.
-          curl -fsS --max-time 30 \
-            --retry 10 \
-            --retry-all-errors \
-            --retry-delay 5 \
-            "https://inspiring-spirit-production-ea08.up.railway.app/api/health/" > /dev/null || true
+          # Retry a few times and LOG status codes/latency for visibility.
+          URL="https://inspiring-spirit-production-ea08.up.railway.app/api/health/"
+          for i in $(seq 1 10); do
+            out=$(curl -sS -o /dev/null -w "%{http_code} %{time_total}" --max-time 30 "$URL" || echo "000 0")
+            code=$(echo "$out" | awk '{print $1}')
+            secs=$(echo "$out" | awk '{print $2}')
+            echo "attempt=$i code=$code time=${secs}s"
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 0
